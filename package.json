@@ -1,7 +1,7 @@
 {
-  "name": "cf_ai_cloudflare",
+  "name": "cf_ai_linuxSystemHelper",
   "version": "1.0.0",
-  "description": "AI-powered Linux setup and management helper built on Cloudflare Workers",
+  "description": "AI-powered Linux setup and management helper built on Cloudflare Workers AI with Llama 3.3",
   "type": "module",
   "private": true,
   "scripts": {

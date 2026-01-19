@@ -271,3 +271,19 @@ Dev mode bugs: wrangler dev alarms/hot‑reload unstable.
 
 # Prompt 12 (Agent)
 perfect, now commit and push changes on what you did while there still remains minor bugs but this is a good version to revert to if something happens
+
+# Prompt 13 (Agent)
+now I want you to remove the brain orange icon you ahve and replace it with the penguin beside it to its left. as 2 iconse beside each other is quite ugly
+
+# Prompt 14 (Agent)
+Ok, now the only problem that remains is that the response gets cut-off and this is so annoying to end-users. I want you to limit the response but not manually when we receive it. but instruct liama itself to limit it and if it requires a lot of steps to make the operation in seperate steps and follow with the user
+
+# prompt 15 (Agent)
+rename the project to :
+cf_ai_linuxSystemHelper
+
+make sure you check all ofthese flags: 
+LLM (recommend using Llama 3.3 on Workers AI), or an external LLM of your choice
+Workflow / coordination (recommend using Workflows, Workers or Durable Objects)
+User input via chat or voice (recommend using Pages or Realtime)
+Memory or state

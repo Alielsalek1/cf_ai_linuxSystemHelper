@@ -2,6 +2,7 @@ import { routeAgentRequest, type Schedule } from "agents";
 import { AIChatAgent } from "@cloudflare/ai-chat";
 import {
   generateId,
+  generateText,
   streamText,
   type StreamTextOnFinishCallback,
   createUIMessageStream,
@@ -17,7 +18,6 @@ import {
   createDefaultState,
   mergeState,
   formatStateForAI,
-  inferStateFromDistro,
   type ExperienceLevel,
   type PartialLinuxUserState
 } from "./types";
@@ -43,11 +43,18 @@ ${experienceInstructions}
 ## User Profile
 ${userContext}
 
+## CRITICAL: Response Length Rules
+- Keep responses SHORT and CONCISE (max 150-200 words)
+- For complex tasks, break into numbered steps and handle ONE STEP at a time
+- After completing a step, ask: "Ready for the next step?" or "Should I continue?"
+- Never dump a wall of text - users will lose important information
+- Use bullet points and code blocks for clarity
+- If a command is long, show ONLY the command without lengthy explanations
+
 ## Guidelines
 - Use the user's package manager (dnf for Fedora, pacman for Arch, apt for Debian/Ubuntu)
 - Respect their desktop environment
 - Warn before destructive operations with ⚠️
-- Keep responses focused and actionable
 - When user mentions distro/DE/hardware, acknowledge the update
 
 ## Commands
@@ -74,111 +81,81 @@ Concise responses. Commands first, minimal explanation.`;
 }
 
 // ============================================
-// State Extraction Patterns
+// LLM-Based State Extraction
 // ============================================
 
-const STATE_PATTERNS: Array<{
-  pattern: RegExp;
-  extract: (match: RegExpMatchArray) => PartialLinuxUserState;
-}> = [
-  // Distro detection
-  {
-    pattern: /\b(?:i(?:'m| am)?\s+(?:using|on|running)|my (?:distro|os|system) is|i use)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s*(\d+(?:\.\d+)?)?/i,
-    extract: (match) => {
-      const distro = match[1].trim();
-      const version = match[2] || 'unknown';
-      return {
-        ...inferStateFromDistro(distro),
-        distroVersion: version
-      };
-    }
-  },
-  // Desktop environment
-  {
-    pattern: /\b(?:using|on|running|have)\s+(gnome|kde|plasma|xfce|cinnamon|mate|budgie|lxde|lxqt|i3|sway|hyprland|bspwm|awesome|openbox)/i,
-    extract: (match) => ({
-      desktop: match[1].toLowerCase().replace('plasma', 'kde') as any
-    })
-  },
-  // GPU detection
-  {
-    pattern: /\b(?:nvidia|amd|radeon|intel|integrated)\s*(?:gpu|graphics|card)?/i,
-    extract: (match) => {
-      const gpu = match[0].toLowerCase();
-      if (gpu.includes('nvidia')) return { hardware: { gpuVendor: 'nvidia' } as any };
-      if (gpu.includes('amd') || gpu.includes('radeon')) return { hardware: { gpuVendor: 'amd' } as any };
-      if (gpu.includes('intel') || gpu.includes('integrated')) return { hardware: { gpuVendor: 'intel' } as any };
-      return {};
-    }
-  },
-  // Boot type
-  {
-    pattern: /\b(?:dual[- ]?boot(?:ing)?|wsl2?|virtual\s*(?:machine|box)|vm|vmware|kvm)/i,
-    extract: (match) => {
-      const boot = match[0].toLowerCase();
-      if (boot.includes('dual')) return { bootType: 'dual-windows' as const };
-      if (boot.includes('wsl2')) return { bootType: 'wsl2' as const };
-      if (boot.includes('wsl')) return { bootType: 'wsl1' as const };
-      if (boot.includes('virtualbox')) return { bootType: 'vm-virtualbox' as const };
-      if (boot.includes('vmware')) return { bootType: 'vm-vmware' as const };
-      if (boot.includes('kvm')) return { bootType: 'vm-kvm' as const };
-      if (boot.includes('vm') || boot.includes('virtual')) return { bootType: 'vm-virtualbox' as const };
-      return {};
-    }
-  },
-  // Shell
-  {
-    pattern: /\b(?:using|my shell is|i use)\s+(bash|zsh|fish|nushell)/i,
-    extract: (match) => ({
-      shell: match[1].toLowerCase() as any
-    })
-  },
-  // Experience level from explicit statements
-  {
-    pattern: /\bi(?:'m| am)?\s+(?:a\s+)?(?:linux\s+)?(beginner|newbie|new to linux|intermediate|advanced|expert|power user)/i,
-    extract: (match) => {
-      const level = match[1].toLowerCase();
-      if (level.includes('beginner') || level.includes('newbie') || level.includes('new')) {
-        return { experienceLevel: 'beginner' as const };
-      }
-      if (level.includes('intermediate')) {
-        return { experienceLevel: 'intermediate' as const };
-      }
-      return { experienceLevel: 'advanced' as const };
-    }
-  },
-  // Laptop detection
-  {
-    pattern: /\b(?:laptop|notebook|thinkpad|macbook|dell xps|surface)/i,
-    extract: () => ({
-      hardware: { formFactor: 'laptop' } as any
-    })
-  }
-];
+const STATE_EXTRACTION_PROMPT = `Extract Linux system information from the user's message. Return ONLY a valid JSON object with any detected fields. If nothing is detected, return {}.
 
-function extractStateFromMessage(text: string): PartialLinuxUserState {
-  let updates: PartialLinuxUserState = {};
-  
-  for (const { pattern, extract } of STATE_PATTERNS) {
-    const match = text.match(pattern);
-    if (match) {
-      const extracted = extract(match);
-      updates = mergePartialState(updates, extracted);
-    }
-  }
-  
-  return updates;
-}
+Fields to extract (only include if mentioned):
+- distro: Linux distribution name (e.g., "fedora", "arch", "ubuntu", "debian", "nixos", "gentoo")
+- distroVersion: Version number if mentioned
+- packageManager: Infer from distro (dnf=fedora, pacman=arch, apt=debian/ubuntu, zypper=opensuse, emerge=gentoo, nix=nixos)
+- desktop: Desktop environment OR window manager OR compositor (e.g., "gnome", "kde", "hyprland", "sway", "niri", "i3", "bspwm")
+- shell: Shell being used (bash, zsh, fish, nushell)
+- bootType: "single", "dual-windows", "dual-macos", "wsl1", "wsl2", "vm-virtualbox", "vm-vmware", "vm-kvm"
+- experienceLevel: "beginner", "intermediate", or "advanced"
+- gpuVendor: "nvidia", "amd", or "intel"
+- formFactor: "desktop", "laptop", or "server"
 
-function mergePartialState(a: PartialLinuxUserState, b: PartialLinuxUserState): PartialLinuxUserState {
-  return {
-    ...a,
-    ...b,
-    hardware: {
-      ...(a.hardware || {}),
-      ...(b.hardware || {})
-    } as any
-  };
+Examples:
+User: "I'm using Fedora 41 with Hyprland"
+Output: {"distro":"fedora","distroVersion":"41","packageManager":"dnf","desktop":"hyprland"}
+
+User: "running arch on my thinkpad with nvidia"
+Output: {"distro":"arch","packageManager":"pacman","formFactor":"laptop","gpuVendor":"nvidia"}
+
+User: "I use niri on NixOS"
+Output: {"distro":"nixos","packageManager":"nix","desktop":"niri"}
+
+User: "how do I install docker?"
+Output: {}
+
+Now extract from this message:`;
+
+/**
+ * Use LLM to extract state from user message
+ */
+async function extractStateWithLLM(
+  userText: string,
+  model: ReturnType<ReturnType<typeof createWorkersAI>>
+): Promise<PartialLinuxUserState> {
+  try {
+    const result = await generateText({
+      model,
+      prompt: `${STATE_EXTRACTION_PROMPT}\nUser: "${userText}"\nOutput:`
+    });
+
+    const text = result.text.trim();
+    
+    // Try to extract JSON from the response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    
+    // Build the partial state from extracted fields
+    const updates: PartialLinuxUserState = {};
+    
+    if (parsed.distro) updates.distro = parsed.distro.toLowerCase();
+    if (parsed.distroVersion) updates.distroVersion = parsed.distroVersion;
+    if (parsed.packageManager) updates.packageManager = parsed.packageManager.toLowerCase();
+    if (parsed.desktop) updates.desktop = parsed.desktop.toLowerCase();
+    if (parsed.shell) updates.shell = parsed.shell.toLowerCase();
+    if (parsed.bootType) updates.bootType = parsed.bootType;
+    if (parsed.experienceLevel) updates.experienceLevel = parsed.experienceLevel;
+    
+    // Hardware fields
+    if (parsed.gpuVendor || parsed.formFactor) {
+      updates.hardware = {} as any;
+      if (parsed.gpuVendor) (updates.hardware as any).gpuVendor = parsed.gpuVendor.toLowerCase();
+      if (parsed.formFactor) (updates.hardware as any).formFactor = parsed.formFactor.toLowerCase();
+    }
+    
+    return updates;
+  } catch (error) {
+    console.error('State extraction failed:', error);
+    return {};
+  }
 }
 
 // ============================================
@@ -286,9 +263,15 @@ export class Chat extends AIChatAgent<Env> {
       return createUIMessageStreamResponse({ stream });
     }
 
-    // Extract state from user message
-    const stateUpdates = extractStateFromMessage(userText);
+    // Create Workers AI model (needed for both extraction and response)
+    const workersai = createWorkersAI({ binding: this.env.AI });
+    // @ts-expect-error - Llama 3.3 model is valid but not in type definitions
+    const model = workersai(LLAMA_MODEL);
+
+    // Use LLM to extract state from user message
+    const stateUpdates = await extractStateWithLLM(userText, model);
     if (Object.keys(stateUpdates).length > 0) {
+      console.log('LLM extracted state:', stateUpdates);
       await this.updateUserState(stateUpdates);
     }
 
@@ -297,11 +280,6 @@ export class Chat extends AIChatAgent<Env> {
 
     // Build system prompt based on user's profile
     const effectiveSystemPrompt = buildSystemPrompt(userState);
-
-    // Create Workers AI model
-    const workersai = createWorkersAI({ binding: this.env.AI });
-    // @ts-expect-error - Llama 3.3 model is valid but not in type definitions
-    const model = workersai(LLAMA_MODEL);
 
     // Check if user is asking to schedule something
     const wantsSchedule = /\b(remind|schedule|later|in \d+ (minutes?|hours?|days?))\b/i.test(userText);
@@ -328,7 +306,8 @@ export class Chat extends AIChatAgent<Env> {
           // @ts-expect-error - Type mismatch with conditional tools
           onFinish,
           maxSteps: 5,
-          maxTokens: 1024
+          // Safety limit - model is instructed to keep responses short
+          maxTokens: 2048
         });
 
         writer.merge(result.toUIMessageStream());
