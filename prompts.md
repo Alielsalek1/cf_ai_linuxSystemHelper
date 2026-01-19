@@ -60,3 +60,12 @@ State reset: Yes, essential. Add /reset or "clear profile" button → this.histo
 ok, start implementing step by step and test this step by step and always await my review on the code.
 
 # Prompt 5 (Agent)
+now I have successfully logged in cloudflare with wrangler, we can proceed to step 2. but before we proceed to step 2 I want you to push the changes to github with a meaningful commit message as to maintain a version for step 1 before preceeding with step 2.
+
+# Prompt 6 (Agent)
+before proceeding to step 3 make the interface more detailed. you have too few of values and this is a significant limitation.
+e.g. make DistroBase (grouped families → maps to pkg mgrs)
+and add desktop environments. Add more of these we want to be clear and with as much context and helpfulness as possible as this is too narrow for the linux diversity.
+
+# Prompt 7 (Agent)
+good. commit and push what you made to github and proceed to step 3
