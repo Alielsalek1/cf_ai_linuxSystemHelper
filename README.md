@@ -2,6 +2,8 @@
 
 An AI-powered Linux setup and management assistant built on Cloudflare's edge infrastructure.
 
+🔗 **Live Demo**: [cf-ai-linux-system-helper.aliabdelrahman2005.workers.dev](https://cf-ai-linux-system-helper.aliabdelrahman2005.workers.dev/)
+
 ## ✅ Project Requirements Checklist
 
 | Requirement | Implementation | Status |
@@ -18,7 +20,7 @@ An AI-powered Linux setup and management assistant built on Cloudflare's edge in
 │                        Frontend (Vite + React)                  │
 │  - Chat UI with real-time streaming                             │
 │  - Dark/Light theme                                             │
-│  - Slash commands (/reset, /profile, /level)                   │
+│  - Slash commands (/reset, /profile, /level)                    │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -71,29 +73,66 @@ An AI-powered Linux setup and management assistant built on Cloudflare's edge in
 - **Streaming**: AI SDK UI message streams
 - **Agent Framework**: @cloudflare/ai-chat
 
+## 📦 Prerequisites
+
+- **Node.js** 18+ installed
+- **Cloudflare Account** (free tier works) — [Sign up here](https://dash.cloudflare.com/sign-up)
+
 ## 📦 Installation
+
+### 1. Clone and Install
 
 ```bash
 # Clone the repo
-git clone https://github.com/Alielsalek1/cf_ai_cloudflare.git
-cd cf_ai_cloudflare
+git clone https://github.com/Alielsalek1/cf_ai_linuxSystemHelper.git
+cd cf_ai_linuxSystemHelper
 
 # Install dependencies
 npm install
+```
 
-# Run locally
+### 2. Cloudflare Account Setup
+
+```bash
+# Login to Cloudflare
+npx wrangler login
+
+# Initialize your workers.dev subdomain (required one-time for new accounts)
+npx wrangler deploy
+```
+
+> ⚠️ **New accounts:** The first `deploy` may fail, but it registers your workers.dev subdomain. After this, `npm run dev` will work.
+
+### 3. Run Locally
+
+```bash
 npm run dev
+```
 
-# Deploy to Cloudflare
+Open http://localhost:5173 in your browser.
+
+### 4. Deploy to Production
+
+```bash
 npm run deploy
 ```
+
+> **Note**: Even for local development, you need to be logged into Cloudflare because the app uses Workers AI (Llama 3.3) which runs on Cloudflare's infrastructure.
+
+## 🔧 Troubleshooting
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `You need to register a workers.dev subdomain` | New account without subdomain | Run `npx wrangler deploy` once |
+| `404 Not Found` on localhost | Wrong command used | Use `npm run dev`, not `npx wrangler dev` |
+| `Workers AI is not enabled` | AI not activated | Go to Cloudflare Dashboard → AI → Enable Workers AI |
 
 ## 💬 Usage
 
 ### Chat Commands
 - `/reset` - Clear your profile and start fresh
 - `/profile` - View your current Linux profile
-- `/level beginner|intermediate|advanced` - Set experience level
+- `/level` - Set your experience level (beginner, intermediate, advanced)
 
 ### Example Conversations
 ```
