@@ -69,8 +69,20 @@ export default function Chat() {
     setTheme(newTheme);
   };
 
+  // Generate or retrieve a unique user ID for this browser
+  const [userId] = useState(() => {
+    const storedId = localStorage.getItem("chat-user-id");
+    if (storedId) return storedId;
+    
+    // Generate a new unique ID
+    const newId = crypto.randomUUID();
+    localStorage.setItem("chat-user-id", newId);
+    return newId;
+  });
+
   const agent = useAgent({
-    agent: "chat"
+    agent: "chat",
+    name: userId  // Each user gets their own Durable Object instance
   });
 
   const [agentInput, setAgentInput] = useState("");
